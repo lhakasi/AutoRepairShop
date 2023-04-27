@@ -46,6 +46,8 @@ namespace AutoRepairShop
 
                 string userInput = Console.ReadLine();
 
+                Console.Clear();
+
                 switch (userInput)
                 {
                     case CommandGetNewClient:
@@ -68,36 +70,17 @@ namespace AutoRepairShop
             const string CommandGoToStorage = "1";
             const string CommandCompleteRepair = "2";
 
-            string message = "===== Новый клиент приехал в автосервис =====";
-            int stringLenght = message.Length;
-
             bool isRepairing = true;
 
-            Car newClient = new Car(_partsBase);
+            Car client = new Car(_partsBase);
 
             while (isRepairing)
             {
-                ShowMoney();
-
-                Console.WriteLine(new string('=', stringLenght));
-                Console.WriteLine(message);
-                Console.WriteLine(new string('=', stringLenght));
-                Console.WriteLine("Следующие детали неисправны и требуют замены:\n");
-
-                newClient.ShowBrokenParts();
-
-                int totalPrice = GetTotalPrice(newClient);
-
-                Console.WriteLine(new string('=', stringLenght));
-                Console.WriteLine($"Итоговая стоимость: {totalPrice} руб.");
-                Console.WriteLine(new string('=', stringLenght));
-
-                ShowPartsForReplace();
-
-                Console.WriteLine($"{CommandGoToStorage}) - идти на склад за деталями");
-                Console.WriteLine($"{CommandCompleteRepair}) - завершить ремонт");
+                ShowRepairUi(CommandGoToStorage, CommandCompleteRepair, client);
 
                 string userInput = Console.ReadLine();
+
+                Console.Clear();
 
                 switch (userInput)
                 {
@@ -106,8 +89,7 @@ namespace AutoRepairShop
                         break;
 
                     case CommandCompleteRepair:
-                        CompleteRepair(newClient);
-                        isRepairing = false;
+                        isRepairing = false;                        
                         break;
 
                     default:
@@ -115,27 +97,44 @@ namespace AutoRepairShop
                         break;
                 }
             }
+
+            CompleteRepair(client);
         }
 
-        private int GetTotalPrice(Car newClient)
+        private void ShowRepairUi(string CommandGoToStorage, string CommandCompleteRepair, Car client)
         {
-            int totalPrice = 0;
+            string message = "===== Новый клиент приехал в автосервис =====";
+            int stringLenght = message.Length;
 
-            foreach (var carParts in newClient.GetBrokenParts())
-                totalPrice += carParts.Price;
+            ShowMoney();
 
-            return totalPrice;
+            Console.WriteLine(new string('=', stringLenght));
+            Console.WriteLine(message);
+            Console.WriteLine(new string('=', stringLenght));
+            Console.WriteLine("Следующие детали неисправны и требуют замены:\n");
+
+            client.ShowBrokenParts();
+
+            int totalPrice = GetTotalPrice(client);
+
+            Console.WriteLine(new string('=', stringLenght));
+            Console.WriteLine($"Итоговая стоимость: {totalPrice} руб.");
+            Console.WriteLine(new string('=', stringLenght));
+
+            ShowPartsForReplace();
+
+            Console.WriteLine($"{CommandGoToStorage}) - идти на склад за деталями");
+            Console.WriteLine($"{CommandCompleteRepair}) - завершить ремонт");
         }
 
         private void ShowMoney()
         {
-            Console.Clear();
             Console.WriteLine($"Всего заработано: {_money} руб.");
         }
 
         private void GoToStorage()
         {
-            List<Box> boxes = _partsStorage.GetBoxes(); ///
+            List<Box> boxes = _partsStorage.GetBoxes();
 
             string exitCommand = "ВЫХОД";
             string returnPartCommand = "ВЕРНУТЬ";
@@ -145,62 +144,123 @@ namespace AutoRepairShop
             while (isSearching)
             {
                 Console.Clear();
-                Console.WriteLine("Что нужно взять для ремонта?\n");
-                _partsStorage.Show();
 
-                ShowPartsForReplace();
+                ShowStorage(exitCommand, returnPartCommand);
 
-                if (_partsForReplace.Count > 0)
-                    Console.WriteLine($"Если хотите вернуть деталь на склад введите \"{returnPartCommand}\"");
+                string userInput = Console.ReadLine().ToLower();
 
-                Console.Write($"Введите номер детали или \"{exitCommand}\" для завершения: ");
-
-                string userInput = Console.ReadLine();
-
-                if (userInput.ToLower() == exitCommand.ToLower())
-                {
+                if (userInput == exitCommand.ToLower())
                     isSearching = false;
-                }
-                else if (userInput.ToLower() == returnPartCommand.ToLower())
-                {
-                    if (_partsForReplace.Count > 0)
-                        ReturnPart(boxes);
-                }
-                else if (int.TryParse(userInput, out int index) == false || index < 0 || index > boxes.Count)
-                {
-                    ShowErrorMessage();
-                }
+                else if (userInput == returnPartCommand.ToLower())
+                    ReturnPart(boxes);
                 else
-                {
-                    _partsForReplace.Add(boxes[index - 1].GetPart());
+                    AddPartForReplace(boxes, userInput);
 
-                    boxes[index - 1].RemovePart();
-                }
+                Console.Clear();
             }
         }
 
-        private void CompleteRepair(Car newClient)
+        private void ShowStorage(string exitCommand, string returnPartCommand)
         {
-            List<Part> brokenParts = newClient.GetBrokenParts();
-            List<Part> wrightParts = GetRightParts(brokenParts);
-            List<Part> wrongParts = GetWrongParts(brokenParts);
-            List<Part> missingParts = GetMissingParts(brokenParts);
+            Console.WriteLine("Что нужно взять для ремонта?\n");
 
-            brokenParts.Sort();
-            _partsForReplace.Sort();
+            _partsStorage.Show();
 
-            if (brokenParts.SequenceEqual(_partsForReplace))
-                _money += GetTotalPrice(newClient);
-            else if (brokenParts.Count <= _partsForReplace.Count && brokenParts.SequenceEqual(_partsForReplace) == false)
-                EarnIncomeWithPenalty(newClient, wrongParts, 2);
-            else if (brokenParts.Count > _partsForReplace.Count)
-                EarnIncomeWithPenalty(newClient, missingParts);
-            else
+            ShowPartsForReplace();
+
+            if (_partsForReplace.Count > 0)
+                Console.WriteLine($"Если хотите вернуть деталь на склад введите \"{returnPartCommand}\"");
+
+            Console.Write($"Введите номер детали или \"{exitCommand}\" для завершения: ");
+        }
+
+        private void ReturnPart(List<Part> boxes)
+        {
+            if (_partsForReplace.Count > 0)
+                ReturnPart(boxes);
+        }
+
+        private void AddPartForReplace(List<Box> boxes, string userInput)
+        {
+            if (int.TryParse(userInput, out int number) == false)
+            {
                 ShowErrorMessage();
+                return;
+            }
 
+            int index = number - 1;
+
+            if (index < 0 || index >= boxes.Count)
+            {
+                ShowErrorMessage();
+                return;
+            }
+
+            _partsForReplace.Add(boxes[index].GetPart());
+
+            boxes[index].RemovePart();            
+        }
+
+        private void CompleteRepair(Car client)
+        {
+            List<Part> carBrokenParts = client.GetBrokenParts();
+            List<Part> changedParts = GetChangedParts(carBrokenParts);
+            List<Part> restBrokenParts = GetParts(carBrokenParts, changedParts);
+            List<Part> wrongParts = new List<Part>(_partsForReplace);
+
+            restBrokenParts.Sort();
+            wrongParts.Sort();
+
+            List<Part> penaltyParts = GetPenaltyParts(restBrokenParts, wrongParts);
+
+            CalculateReward(changedParts);
+            CalculatePenalty(penaltyParts);
+
+            ShowResult(changedParts, penaltyParts);
+            
             Console.ReadKey();
+            Console.Clear();
 
             _partsForReplace.Clear();
+        }
+
+        private void CalculateReward(List<Part> changedParts)
+        {
+            _money += CalculatePrice(changedParts);
+        }
+
+        private void CalculatePenalty(List<Part> penaltyParts)
+        {
+            _money -= CalculatePrice(penaltyParts);
+        }
+
+        private void ShowResult(List<Part> changedParts, List<Part> penaltyParts)
+        {
+            if (changedParts.Count > 0)
+            {
+                Console.WriteLine("Заменены:");
+
+                ShowPartsInfo(changedParts);
+            }
+            else
+            {
+                Console.WriteLine("Вы не помогли клиенту");
+            }
+
+            Console.WriteLine();
+
+            if (penaltyParts.Count > 0)
+            {
+                Console.WriteLine("Штраф за: ");
+
+                ShowPartsInfo(penaltyParts);
+            }
+        }
+
+        private void ShowPartsInfo(List<Part> parts)
+        {
+            foreach (var part in parts)
+                Console.WriteLine($"{part.Title} - {part.Price}руб.");
         }
 
         private void ShowErrorMessage()
@@ -215,16 +275,14 @@ namespace AutoRepairShop
 
             string userInput = Console.ReadLine();
 
-            if (int.TryParse(userInput, out int index) == false && index < 0 && index > boxes.Count)
-            {
-                ShowErrorMessage();
-            }
+            if (int.TryParse(userInput, out int number) == false && number < 0 && number > boxes.Count)            
+                ShowErrorMessage();            
 
             for (int i = 0; i < _partsForReplace.Count; i++)
             {
-                if (boxes[index - 1].GetPart().Title == _partsForReplace[i].Title)
+                if (boxes[number - 1].GetPart().Title == _partsForReplace[i].Title)
                 {
-                    boxes[index - 1].AddPart();
+                    boxes[number - 1].AddPart();
 
                     _partsForReplace.Remove(_partsForReplace[i]);
                 }
@@ -246,48 +304,59 @@ namespace AutoRepairShop
             }
         }
 
-        private List<Part> GetWrongParts(List<Part> brokenParts) =>
-            brokenParts.Except(_partsForReplace).ToList();
-
-        private List<Part> GetRightParts(List<Part> brokenParts)
+        private int GetTotalPrice(Car client)
         {
-            List<Part> rightParts = new List<Part>();
+            int totalPrice = 0;
 
-            for (int i = 0; i < brokenParts.Count; i++)
+            foreach (var carParts in client.GetBrokenParts())
+                totalPrice += carParts.Price;
+
+            return totalPrice;
+        }
+
+        private int CalculatePrice(List<Part> parts)
+        {
+            int money = 0;
+
+            foreach (var part in parts)
+                money += part.Price;
+
+            return money;
+        }
+
+        private List<Part> GetPenaltyParts(List<Part> restBrokenParts, List<Part> wrongParts)
+        {
+            List<Part> penaltyParts = new List<Part>();
+
+            int amountOfPartForPenalty = Math.Min(restBrokenParts.Count, wrongParts.Count);
+
+            for (int i = 0; i < amountOfPartForPenalty; i++)
+                penaltyParts.Add(restBrokenParts[i]);
+
+            return penaltyParts;
+        }
+
+        private List<Part> GetParts(List<Part> carBrokenParts, List<Part> changedParts) =>
+            carBrokenParts.Except(changedParts).ToList();
+
+        private List<Part> GetChangedParts(List<Part> carBrokenParts)
+        {
+            List<Part> changedParts = new List<Part>();
+
+            for (int i = 0; i < carBrokenParts.Count; i++)
             {
                 for (int j = 0; j < _partsForReplace.Count; j++)
                 {
-                    if (brokenParts[i] == _partsForReplace[j])                    
-                        rightParts.Add(brokenParts[i]);                    
+                    if (carBrokenParts[i].Title == _partsForReplace[j].Title)
+                    {
+                        changedParts.Add(carBrokenParts[i]);
+                        _partsForReplace.RemoveAt(j);
+                        break;
+                    }
                 }
             }
 
-            return rightParts;
-        }
-
-        private List<Part> GetMissingParts(List<Part> brokenParts) =>
-            _partsForReplace.Except(brokenParts).ToList();
-
-        private void EarnIncomeWithPenalty(Car newClient, List<Part> parts, int index)
-        {
-            int penalty = 0;
-
-            foreach (Part part in parts)
-                penalty += part.Price;
-
-            _money += GetTotalPrice(newClient);
-            _money -= penalty * index;
-        }
-
-        private void EarnIncomeWithPenalty(Car newClient, List<Part> parts)
-        {
-            int penalty = 0;
-
-            foreach (Part part in parts)
-                penalty += part.Price;
-
-            _money += GetTotalPrice(newClient);
-            _money -= penalty;
+            return changedParts;
         }
     }
 
