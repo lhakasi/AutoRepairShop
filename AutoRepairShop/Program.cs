@@ -4,6 +4,11 @@ using System.Linq;
 
 namespace AutoRepairShop
 {
+    enum Errors
+    {
+        IncorrectCommand
+    }
+
     internal class Program
     {
         static void Main(string[] args)
@@ -24,8 +29,7 @@ namespace AutoRepairShop
         public AutoRepairShop()
         {
             _partsBase = new PartsBase();
-            _partsStorage = new PartsStorage();
-            _partsForReplace = new List<Part>();
+            _partsStorage = new PartsStorage();            
         }
 
         public void Work()
@@ -59,7 +63,7 @@ namespace AutoRepairShop
                         break;
 
                     default:
-                        ShowErrorMessage();
+                        StorageOfErrors.ShowError(Errors.IncorrectCommand);
                         break;
                 }
             }
@@ -89,11 +93,11 @@ namespace AutoRepairShop
                         break;
 
                     case CommandCompleteRepair:
-                        isRepairing = false;                        
+                        isRepairing = false;
                         break;
 
                     default:
-                        ShowErrorMessage();
+                        StorageOfErrors.ShowError(Errors.IncorrectCommand);
                         break;
                 }
             }
@@ -121,7 +125,7 @@ namespace AutoRepairShop
             Console.WriteLine($"Итоговая стоимость: {totalPrice} руб.");
             Console.WriteLine(new string('=', stringLenght));
 
-            ShowPartsForReplace();
+            _partsStorage.ShowPartsForReplace();
 
             Console.WriteLine($"{CommandGoToStorage}) - идти на склад за деталями");
             Console.WriteLine($"{CommandCompleteRepair}) - завершить ремонт");
@@ -134,78 +138,16 @@ namespace AutoRepairShop
 
         private void GoToStorage()
         {
-            List<Box> boxes = _partsStorage.GetBoxes();
-
-            string exitCommand = "ВЫХОД";
-            string returnPartCommand = "ВЕРНУТЬ";
-
-            bool isSearching = true;
-
-            while (isSearching)
-            {
-                Console.Clear();
-
-                ShowStorage(exitCommand, returnPartCommand);
-
-                string userInput = Console.ReadLine().ToLower();
-
-                if (userInput == exitCommand.ToLower())
-                    isSearching = false;
-                else if (userInput == returnPartCommand.ToLower())
-                    ReturnPart(boxes);
-                else
-                    AddPartForReplace(boxes, userInput);
-
-                Console.Clear();
-            }
-        }
-
-        private void ShowStorage(string exitCommand, string returnPartCommand)
-        {
-            Console.WriteLine("Что нужно взять для ремонта?\n");
-
-            _partsStorage.Show();
-
-            ShowPartsForReplace();
-
-            if (_partsForReplace.Count > 0)
-                Console.WriteLine($"Если хотите вернуть деталь на склад введите \"{returnPartCommand}\"");
-
-            Console.Write($"Введите номер детали или \"{exitCommand}\" для завершения: ");
-        }
-
-        private void ReturnPart(List<Part> boxes)
-        {
-            if (_partsForReplace.Count > 0)
-                ReturnPart(boxes);
-        }
-
-        private void AddPartForReplace(List<Box> boxes, string userInput)
-        {
-            if (int.TryParse(userInput, out int number) == false)
-            {
-                ShowErrorMessage();
-                return;
-            }
-
-            int index = number - 1;
-
-            if (index < 0 || index >= boxes.Count)
-            {
-                ShowErrorMessage();
-                return;
-            }
-
-            _partsForReplace.Add(boxes[index].GetPart());
-
-            boxes[index].RemovePart();            
-        }
+            _partsStorage.ShowMenu();
+        }        
 
         private void CompleteRepair(Car client)
         {
+            _partsForReplace = _partsStorage.GetPartsForReplace();
             List<Part> carBrokenParts = client.GetBrokenParts();
             List<Part> changedParts = GetChangedParts(carBrokenParts);
             List<Part> restBrokenParts = GetParts(carBrokenParts, changedParts);
+            //List<Part> restBrokenParts = null;
             List<Part> wrongParts = new List<Part>(_partsForReplace);
 
             restBrokenParts.Sort();
@@ -217,7 +159,7 @@ namespace AutoRepairShop
             CalculatePenalty(penaltyParts);
 
             ShowResult(changedParts, penaltyParts);
-            
+
             Console.ReadKey();
             Console.Clear();
 
@@ -261,48 +203,7 @@ namespace AutoRepairShop
         {
             foreach (var part in parts)
                 Console.WriteLine($"{part.Title} - {part.Price}руб.");
-        }
-
-        private void ShowErrorMessage()
-        {
-            Console.WriteLine("Некорректная команда");
-            Console.ReadKey();
-        }
-
-        private void ReturnPart(List<Box> boxes)
-        {
-            Console.Write("Введите номер коробки с деталями в которую хотите вернуть деталь: ");
-
-            string userInput = Console.ReadLine();
-
-            if (int.TryParse(userInput, out int number) == false && number < 0 && number > boxes.Count)            
-                ShowErrorMessage();            
-
-            for (int i = 0; i < _partsForReplace.Count; i++)
-            {
-                if (boxes[number - 1].GetPart().Title == _partsForReplace[i].Title)
-                {
-                    boxes[number - 1].AddPart();
-
-                    _partsForReplace.Remove(_partsForReplace[i]);
-                }
-            }
-        }
-
-        private void ShowPartsForReplace()
-        {
-            if (_partsForReplace.Count > 0)
-            {
-                Console.WriteLine("Вы взяли:\n");
-
-                foreach (Part part in _partsForReplace)
-                {
-                    Console.WriteLine("    " + part.Title);
-                }
-
-                Console.WriteLine();
-            }
-        }
+        }        
 
         private int GetTotalPrice(Car client)
         {
@@ -362,29 +263,80 @@ namespace AutoRepairShop
 
     class PartsStorage
     {
-        private PartsBase _partsBase = new PartsBase();
-        private List<Part> _parts;
-        private List<Box> _boxes = new List<Box>();
+        private PartsBase _partsBase;
+        private List<Box> _boxes;
+        private List<Part> _partsForReplace;
+
+        private string _exitCommand;
+        private string _returnPartCommand;
 
         public PartsStorage()
         {
-            _parts = _partsBase.CreateNewParts();
+            _partsBase = new PartsBase();            
+            _boxes = new List<Box>();
+            _partsForReplace = new List<Part>();
 
             FillWithParts();
+
+            _exitCommand = "ВЫХОД";
+            _returnPartCommand = "ВЕРНУТЬ";
+        }
+
+        public void ShowMenu()
+        {
+            bool isSearching = true;
+
+            while (isSearching)
+            {
+                Console.Clear();
+
+                ShowParts();
+
+                string userInput = Console.ReadLine().ToLower();
+
+                if (userInput == _exitCommand.ToLower())
+                    isSearching = false;
+                else if (userInput == _returnPartCommand.ToLower())
+                    ReturnPart();
+                else
+                    AddPartForReplace(userInput);
+
+                Console.Clear();
+            }
+        }
+
+        public void ShowPartsForReplace()
+        {
+            if (_partsForReplace.Count > 0)
+            {
+                Console.WriteLine("Вы взяли:\n");
+
+                foreach (Part part in _partsForReplace)
+                    Console.WriteLine("    " + part.Title);
+
+                Console.WriteLine();
+            }
         }
 
         private void FillWithParts()
         {
-            for (int i = 0; i < _parts.Count; i++)
+            List<Part> parts = _partsBase.CreateNewParts();
+
+            for (int i = 0; i < parts.Count; i++)
             {
                 int count = HolyRandom.GetNumber(1, 50);
 
-                _boxes.Add(new Box(_parts[i], count));
+                _boxes.Add(new Box(parts[i], count));
             }
         }
 
-        public void Show()
+        public List<Part> GetPartsForReplace() =>
+            new List<Part>(_partsForReplace);
+
+        private void ShowParts()
         {
+            Console.WriteLine("Что нужно взять для ремонта?\n");
+
             for (int i = 0; i < _boxes.Count; i++)
             {
                 int partsCount = _boxes[i].Count;
@@ -396,10 +348,62 @@ namespace AutoRepairShop
             }
 
             Console.WriteLine();
+
+            ShowPartsForReplace();
+
+            if (_partsForReplace.Count > 0)
+                Console.WriteLine($"Если хотите вернуть деталь на склад введите \"{_returnPartCommand}\"");
+
+            Console.Write($"Введите номер детали или \"{_exitCommand}\" для завершения: ");
         }
 
-        public List<Box> GetBoxes() =>
-            new List<Box>(_boxes);
+        private void ReturnPart()
+        {
+            if (_partsForReplace.Count > 0)
+            {
+                Console.Write("Введите номер коробки с деталями в которую хотите вернуть деталь: ");
+
+                string userInput = Console.ReadLine();
+
+                if (int.TryParse(userInput, out int number) == false && number < 0 && number > _boxes.Count)
+                    StorageOfErrors.ShowError(Errors.IncorrectCommand);
+
+                int index = number - 1;
+
+                for (int i = 0; i < _partsForReplace.Count; i++)
+                {
+                    if (_boxes[index].GetPart().Title == _partsForReplace[i].Title)
+                    {
+                        _boxes[index].AddPart();
+
+                        _partsForReplace.RemoveAt(i);
+
+                        break;
+                    }
+                }
+            }
+        }
+
+        private void AddPartForReplace(string userInput)
+        {
+            if (int.TryParse(userInput, out int number) == false)
+            {
+                StorageOfErrors.ShowError(Errors.IncorrectCommand);
+                return;
+            }
+
+            int index = number - 1;
+
+            if (index < 0 || index >= _boxes.Count)
+            {
+                StorageOfErrors.ShowError(Errors.IncorrectCommand);
+                return;
+            }
+
+            _partsForReplace.Add(_boxes[index].GetPart());
+
+            _boxes[index].RemovePart();
+        }
     }
 
     class Box
@@ -415,9 +419,6 @@ namespace AutoRepairShop
         public int Count =>
             _parts.Count;
 
-        public List<Part> GetParts() =>
-            new List<Part>(_parts);
-
         public void RemovePart() =>
             _parts.RemoveAt(0);
 
@@ -430,6 +431,9 @@ namespace AutoRepairShop
 
     class Part : IComparable<Part>
     {
+        public readonly string Title;
+        public readonly int Price;
+
         public Part(string title, int price)
         {
             Title = title;
@@ -437,15 +441,12 @@ namespace AutoRepairShop
             IsBroken = false;
         }
 
-        public readonly string Title;
-        public readonly int Price;
-
         public bool IsBroken { get; private set; }
 
         public void Break() =>
             IsBroken = true;
 
-        public int CompareTo(Part other)
+        private int CompareTo(Part other)
         {
             if (ReferenceEquals(this, other))
                 return 0;
@@ -466,7 +467,7 @@ namespace AutoRepairShop
 
     class Car
     {
-        private List<Part> _parts = new List<Part>();
+        private List<Part> _parts;
 
         public Car(PartsBase partsBase)
         {
@@ -545,12 +546,6 @@ namespace AutoRepairShop
             return parts;
         }
 
-        public void ShowInfo()
-        {
-            foreach (var item in _parts)
-                Console.WriteLine(item.Title);
-        }
-
         public string GetTitle(int index) =>
             _parts[index].Title;
     }
@@ -564,5 +559,21 @@ namespace AutoRepairShop
 
         public static int GetNumber(int maxValue) =>
                    _random.Next(maxValue);
+    }
+
+    class StorageOfErrors
+    {
+        public static void ShowError(Errors error)
+        {
+            Dictionary<Errors, string> errors = new Dictionary<Errors, string>
+            {                
+                { Errors.IncorrectCommand, "Некорректная команда" }
+            };
+
+            if (errors.ContainsKey(error))
+                Console.WriteLine(errors[error]);
+
+            Console.ReadKey();
+        }
     }
 }
